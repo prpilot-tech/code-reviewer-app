@@ -51,7 +51,14 @@ function RootScreen() {
         <div className="flex items-center justify-self-end gap-2">
           {name && <span className=" text-sm">{name}</span>}
           <AnimatedThemeToggler />
-          <CogIcon size={22} />
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            aria-label="Settings"
+            onClick={() => navigate({ to: "/settings" })}
+          >
+            <CogIcon size={18} />
+          </Button>
         </div>
       </header>
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden">
