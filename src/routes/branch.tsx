@@ -432,7 +432,7 @@ function BranchScreen() {
                             {formatRelativeTime(commit.timestamp)} ·{" "}
                             {formatExactDate(commit.timestamp)}
                           </TimelineDate>
-                          <TimelineTitle className="truncate pr-1">
+                          <TimelineTitle className="pr-1 line-clamp-3">
                             {commit.message}
                           </TimelineTitle>
                           <div className="border-border/60 mt-2 flex items-center justify-between gap-2 border-t pt-2 text-xs">
