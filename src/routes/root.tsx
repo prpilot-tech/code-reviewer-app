@@ -1,3 +1,4 @@
+import FloatingBlobs from "@/components/floating-blobs";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -26,6 +27,7 @@ function RootScreen() {
 
   return (
     <div className="relative flex h-screen flex-col p-4">
+      <FloatingBlobs />
       <header className="relative z-10 flex items-center justify-between ">
         <ButtonGroup className="justify-self-start">
           <Button
