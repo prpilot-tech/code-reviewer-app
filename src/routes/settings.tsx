@@ -33,7 +33,9 @@ import { z } from "zod";
 const STORE_KEY = "aiApiConfig";
 
 const formSchema = z.object({
-  apiUrl: z.string().url("Enter a valid URL"),
+  apiUrl: z.url({
+    message: "Enter a valid URL, e.g. http://127.0.0.1:1234/v1/chat/completions",
+  }),
   apiKey: z.string().min(1, "API key is required"),
   model: z.string().min(1, "Model is required"),
   temperature: z.number().min(0).max(1),
