@@ -4,6 +4,7 @@ import {
   generateReview,
   loadAiApiConfig,
   type AiReviewResponse,
+  type ReviewItem,
   type Severity,
 } from "@/lib/ai";
 import { getBranchDiffDetail, type BranchDiffDetail } from "@/lib/git";
@@ -14,6 +15,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  Check,
+  Copy,
   GitCompare,
   GitPullRequest,
   Info,
@@ -124,6 +127,67 @@ function diffLineStats(diff: BranchDiffDetail) {
   return { insertions, deletions, filesChanged: diff.files.length };
 }
 
+function buildFindingCopyText(item: ReviewItem): string {
+  const lines = [
+    "Please fix the following code review finding:",
+    "",
+    `File: ${item.file}`,
+    `Severity: ${item.severity}`,
+    `Issue: ${item.title}`,
+    "",
+    item.review,
+  ];
+
+  if (item.snippet) {
+    lines.push(
+      "",
+      "Relevant diff:",
+      "```diff",
+      item.snippet.header,
+      item.snippet.content,
+      "```",
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function CopyFindingButton({
+  item,
+  className,
+}: {
+  item: ReviewItem;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildFindingCopyText(item));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Couldn't copy to clipboard.");
+    }
+  }, [item]);
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className={`text-muted-foreground shrink-0 ${className ?? ""}`}
+      onClick={handleCopy}
+      title="Copy for AI agent"
+    >
+      {copied ? (
+        <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+      ) : (
+        <Copy className="size-3.5" />
+      )}
+    </Button>
+  );
+}
+
 function CountUpNumber({
   value,
   className,
@@ -149,39 +213,125 @@ function CountUpNumber({
   return <span className={className}>{display}</span>;
 }
 
+function parseHunkHeader(
+  header: string,
+): { oldStart: number; newStart: number } | null {
+  const match = header.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+  if (!match) return null;
+  return { oldStart: Number(match[1]), newStart: Number(match[2]) };
+}
+
+type DiffLine = {
+  text: string;
+  type: "add" | "del" | "context";
+  oldLine: number | null;
+  newLine: number | null;
+};
+
+function annotateHunkLines(
+  content: string,
+  parsed: { oldStart: number; newStart: number } | null,
+): DiffLine[] {
+  const rawLines = content.split("\n").filter((line) => line.length > 0);
+  let oldLine = parsed?.oldStart ?? 0;
+  let newLine = parsed?.newStart ?? 0;
+
+  return rawLines.map((line) => {
+    const marker = line[0];
+    const text = line.slice(1);
+
+    if (marker === "+") {
+      const result: DiffLine = {
+        text,
+        type: "add",
+        oldLine: null,
+        newLine: parsed ? newLine : null,
+      };
+      if (parsed) newLine += 1;
+      return result;
+    }
+
+    if (marker === "-") {
+      const result: DiffLine = {
+        text,
+        type: "del",
+        oldLine: parsed ? oldLine : null,
+        newLine: null,
+      };
+      if (parsed) oldLine += 1;
+      return result;
+    }
+
+    const result: DiffLine = {
+      text,
+      type: "context",
+      oldLine: parsed ? oldLine : null,
+      newLine: parsed ? newLine : null,
+    };
+    if (parsed) {
+      oldLine += 1;
+      newLine += 1;
+    }
+    return result;
+  });
+}
+
 function DiffSnippet({
+  file,
   header,
   content,
 }: {
+  file: string;
   header: string;
   content: string;
 }) {
-  const lines = content.split("\n").filter((line) => line.length > 0);
+  const parsed = useMemo(() => parseHunkHeader(header), [header]);
+  const lines = useMemo(
+    () => annotateHunkLines(content, parsed),
+    [content, parsed],
+  );
+  const firstNewLine = lines.find((line) => line.newLine !== null)?.newLine;
+  const locationLabel = firstNewLine
+    ? `Line ${firstNewLine}`
+    : parsed
+      ? `Line ${parsed.oldStart}`
+      : null;
+
   return (
     <div className="overflow-hidden rounded-t-2xl border border-b-0 border-border/70">
-      <div className="text-muted-foreground bg-muted/40 px-3 py-1.5 font-mono text-xs">
-        {header}
+      <div className="text-muted-foreground bg-muted/40 flex items-center gap-2 px-3 py-1.5 font-mono text-xs">
+        <span className="text-foreground/80 min-w-0 truncate font-medium">
+          {file}
+        </span>
+        {locationLabel && (
+          <span className="bg-muted shrink-0 rounded-full px-1.5 py-0.5 tabular-nums">
+            {locationLabel}
+          </span>
+        )}
+        <span className="text-muted-foreground/70 shrink-0">{header}</span>
       </div>
       <pre className="overflow-x-auto p-0 text-xs leading-relaxed">
         <code>
-          {lines.map((line, index) => {
-            const isAdd = line.startsWith("+");
-            const isDel = line.startsWith("-");
-            return (
-              <div
-                key={index}
-                className={
-                  isAdd
-                    ? "bg-emerald-500/10 px-3 py-0.5 font-mono text-emerald-700 dark:text-emerald-400"
-                    : isDel
-                      ? "bg-rose-500/10 px-3 py-0.5 font-mono text-rose-700 dark:text-rose-400"
-                      : "text-muted-foreground px-3 py-0.5 font-mono"
-                }
-              >
-                {line}
-              </div>
-            );
-          })}
+          {lines.map((line, index) => (
+            <div
+              key={index}
+              className={`flex ${
+                line.type === "add"
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : line.type === "del"
+                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                    : "text-muted-foreground"
+              }`}
+            >
+              <span className="text-muted-foreground/50 flex shrink-0 gap-2 px-2 py-0.5 tabular-nums select-none">
+                <span className="w-6 text-right">{line.oldLine ?? ""}</span>
+                <span className="w-6 text-right">{line.newLine ?? ""}</span>
+              </span>
+              <span className="flex-1 px-3 py-0.5 font-mono whitespace-pre">
+                {line.text}
+              </span>
+            </div>
+          ))}
         </code>
       </pre>
     </div>
@@ -255,10 +405,13 @@ function ReviewScreen() {
     runReview();
   }, [runReview]);
 
-  const stats = useMemo(
-    () => (state.status === "ready" ? diffLineStats(state.diff) : null),
-    [state],
-  );
+  const stats = useMemo(() => {
+    if (state.status !== "ready") return null;
+    const criticalCount = state.review.findings.filter(
+      (finding) => finding.severity === "critical",
+    ).length;
+    return { ...diffLineStats(state.diff), criticalCount };
+  }, [state]);
 
   const groupedFindings = useMemo(() => {
     if (state.status !== "ready") return [];
@@ -277,8 +430,6 @@ function ReviewScreen() {
       items: groups.get(path)!,
     }));
   }, [state]);
-
-  console.log("state :", state);
 
   if (
     state.status === "loading" ||
@@ -396,6 +547,12 @@ function ReviewScreen() {
                   {stats.filesChanged} file
                   {stats.filesChanged === 1 ? "" : "s"}
                 </span>
+                <span
+                  className={`flex items-center gap-1 ${stats.criticalCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}
+                >
+                  <AlertTriangle className="size-3.5" />
+                  {stats.criticalCount} critical
+                </span>
               </div>
             )}
           </div>
@@ -477,6 +634,7 @@ function ReviewScreen() {
                     >
                       {item.snippet && (
                         <DiffSnippet
+                          file={item.file}
                           header={item.snippet.header}
                           content={item.snippet.content}
                         />
@@ -502,6 +660,7 @@ function ReviewScreen() {
                               <Icon className="size-3" />
                               {meta.label}
                             </span>
+                            <CopyFindingButton item={item} className="ml-auto" />
                           </div>
                           <p className="text-muted-foreground text-sm">
                             {item.review}

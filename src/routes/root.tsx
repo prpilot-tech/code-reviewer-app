@@ -26,7 +26,7 @@ function RootScreen() {
   const canGoForward = currentIndex >= 0 && currentIndex < STEPS.length - 1;
 
   return (
-    <div className="relative flex h-screen flex-col p-4">
+    <div className="relative flex min-h-screen flex-col p-4">
       <FloatingBlobs />
       <header className="relative z-10 flex items-center justify-between ">
         <ButtonGroup className="justify-self-start">

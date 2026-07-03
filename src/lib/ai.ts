@@ -104,7 +104,13 @@ export function buildDiffPromptText(detail: BranchDiffDetail): string {
   return lines.join("\n");
 }
 
-const SYSTEM_PROMPT = `You are a senior code reviewer. You will be given a unified diff between two git branches, with each file introduced by a "FILE:" line and each hunk introduced by a "HUNK <id> <header>" line.
+const SYSTEM_PROMPT = `You are a strict, meticulous senior code reviewer performing a rigorous audit. You will be given a unified diff between two git branches, with each file introduced by a "FILE:" line and each hunk introduced by a "HUNK <id> <header>" line.
+
+Review standards:
+- Do not give the benefit of the doubt. If something could plausibly be a bug, security issue, race condition, edge case, missing error handling, missing input validation, missing test coverage, or a violation of best practices, flag it.
+- Actively look for: unhandled errors/exceptions, null/undefined access, off-by-one errors, resource leaks, injection or XSS vectors, hardcoded secrets, missing authorization checks, race conditions, inefficient algorithms or unnecessary re-renders, dead code, unclear naming, and missing or inadequate tests for new logic.
+- Prefer flagging borderline issues as "suggestion" or "info" rather than omitting them — this review should surface more, not fewer, findings than a casual pass. Only skip a finding if it is truly trivial and has no bearing on correctness, security, maintainability, or performance.
+- Score conservatively: reserve scores above 90 for changes with no notable issues. Deduct meaningfully for each unresolved concern, even minor ones. A diff with several warnings or a missing test should not score above 70.
 
 Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
 {
@@ -123,12 +129,12 @@ Respond with a single JSON object only, no prose outside the JSON, matching exac
       "hunkId": string | null (must exactly match a "HUNK <id>" from the diff, or null for a file-level comment),
       "severity": "critical" | "warning" | "suggestion" | "info",
       "title": string (short),
-      "review": string (explain the issue or suggestion)
+      "review": string (explain the issue or suggestion, and how to fix it)
     }
   ]
 }
 
-Each metric score reflects the whole diff. Findings should call out the most important, specific issues — do not create a finding for every line, only for things worth a reviewer's attention. If there are no changes to comment on, return an empty findings array.`;
+Findings should be specific and actionable. If there are truly no changes to comment on, return an empty findings array — but treat that as rare, not the default.`;
 
 interface ChatCompletionResponse {
   choices?: { message?: { content?: string } }[];
