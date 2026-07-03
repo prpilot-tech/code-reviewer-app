@@ -13,7 +13,9 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
+  Bot,
   GitCompare,
+  GitPullRequest,
   Info,
   Lightbulb,
   Loader2,
@@ -59,27 +61,46 @@ const METRICS: { key: keyof AiReviewResponse["metrics"]; label: string }[] = [
 
 const SEVERITY_META: Record<
   Severity,
-  { label: string; icon: typeof AlertTriangle; className: string }
+  {
+    label: string;
+    icon: typeof AlertTriangle;
+    borderClassName: string;
+    textClassName: string;
+    badgeClassName: string;
+    avatarClassName: string;
+  }
 > = {
   critical: {
     label: "Critical",
     icon: AlertTriangle,
-    className: "border-l-rose-500 text-rose-600 dark:text-rose-400",
+    borderClassName: "border-l-rose-500",
+    textClassName: "text-rose-600 dark:text-rose-400",
+    badgeClassName: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    avatarClassName: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
   },
   warning: {
     label: "Warning",
     icon: AlertCircle,
-    className: "border-l-amber-500 text-amber-600 dark:text-amber-400",
+    borderClassName: "border-l-amber-500",
+    textClassName: "text-amber-600 dark:text-amber-400",
+    badgeClassName: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    avatarClassName: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   },
   suggestion: {
     label: "Suggestion",
     icon: Lightbulb,
-    className: "border-l-sky-500 text-sky-600 dark:text-sky-400",
+    borderClassName: "border-l-sky-500",
+    textClassName: "text-sky-600 dark:text-sky-400",
+    badgeClassName: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+    avatarClassName: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
   },
   info: {
     label: "Info",
     icon: Info,
-    className: "border-l-border text-muted-foreground",
+    borderClassName: "border-l-border",
+    textClassName: "text-muted-foreground",
+    badgeClassName: "bg-muted text-muted-foreground",
+    avatarClassName: "bg-muted text-muted-foreground",
   },
 };
 
@@ -128,10 +149,16 @@ function CountUpNumber({
   return <span className={className}>{display}</span>;
 }
 
-function DiffSnippet({ header, content }: { header: string; content: string }) {
+function DiffSnippet({
+  header,
+  content,
+}: {
+  header: string;
+  content: string;
+}) {
   const lines = content.split("\n").filter((line) => line.length > 0);
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/70">
+    <div className="overflow-hidden rounded-t-2xl border border-b-0 border-border/70">
       <div className="text-muted-foreground bg-muted/40 px-3 py-1.5 font-mono text-xs">
         {header}
       </div>
@@ -325,7 +352,23 @@ function ReviewScreen() {
   const overall = review.metrics.overall;
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="relative flex-1 overflow-y-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35, delay: 0.2, ease: "easeOut" }}
+        className="fixed right-6 bottom-6 z-10"
+      >
+        <Button
+          size="lg"
+          className="gap-2 rounded-full px-4 shadow-lg"
+          onClick={() => navigate({ to: "/pr-description" })}
+        >
+          <GitPullRequest className="size-4" />
+          Generate PR
+        </Button>
+      </motion.div>
+
       <div className="mx-auto w-full max-w-4xl space-y-6 px-4 pb-10">
         <motion.div
           custom={0}
@@ -427,7 +470,7 @@ function ReviewScreen() {
                   return (
                     <div
                       key={itemIndex}
-                      className={`bg-card animate-in fade-in slide-in-from-left-2 fill-mode-both space-y-3 rounded-3xl border-l-4 p-4 shadow-sm duration-300 ${meta.className}`}
+                      className={`bg-card animate-in fade-in slide-in-from-left-2 fill-mode-both overflow-hidden rounded-3xl border-l-4 shadow-sm duration-300 ${meta.borderClassName}`}
                       style={{
                         animationDelay: `${Math.min((groupIndex * 3 + itemIndex) * 40, 480)}ms`,
                       }}
@@ -438,17 +481,28 @@ function ReviewScreen() {
                           content={item.snippet.content}
                         />
                       )}
-                      <div className="flex items-start gap-2">
-                        <Icon
-                          className={`mt-0.5 size-4 shrink-0 ${meta.className
-                            .split(" ")
-                            .filter((c) => c.startsWith("text-"))
-                            .join(" ")}`}
-                        />
-                        <div className="min-w-0 space-y-0.5">
-                          <p className="text-foreground text-sm font-medium">
-                            {item.title}
-                          </p>
+                      <div
+                        className={`flex items-start gap-2.5 p-4 ${item.snippet ? "border-border/70 border-t" : ""}`}
+                      >
+                        <span
+                          className={`flex size-7 shrink-0 items-center justify-center rounded-full ${meta.avatarClassName}`}
+                        >
+                          <Bot className="size-4" />
+                        </span>
+                        <div
+                          className={`min-w-0 flex-1 space-y-1 rounded-2xl rounded-tl-sm bg-muted/40 px-3 py-2`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-foreground text-sm font-medium">
+                              {item.title}
+                            </p>
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${meta.badgeClassName}`}
+                            >
+                              <Icon className="size-3" />
+                              {meta.label}
+                            </span>
+                          </div>
                           <p className="text-muted-foreground text-sm">
                             {item.review}
                           </p>

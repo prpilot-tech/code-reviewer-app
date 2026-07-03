@@ -155,19 +155,18 @@ function extractJsonPayload(content: string): string {
 }
 
 /**
- * Sends the diff to the configured OpenAI-compatible endpoint and returns a
- * validated structured review. Throws a descriptive error for network,
- * HTTP, parse, or schema-validation failures.
+ * Sends a system/user prompt pair to the configured OpenAI-compatible chat
+ * completion endpoint and returns the raw message content. Throws a
+ * descriptive error for network, HTTP, or empty-response failures.
  */
-export async function generateReview(
-  diffDetail: BranchDiffDetail,
+async function callChatCompletion(
   config: AiApiConfig,
-): Promise<AiReviewResponse> {
-  const url = `${config.apiUrl}`;
-
+  systemPrompt: string,
+  userContent: string,
+): Promise<string> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(config.apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -179,11 +178,8 @@ export async function generateReview(
         max_tokens: config.maxTokens,
         stream: false,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `Review the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
         ],
       }),
     });
@@ -210,6 +206,24 @@ export async function generateReview(
     throw new Error("The AI response didn't include any content.");
   }
 
+  return content;
+}
+
+/**
+ * Sends the diff to the configured OpenAI-compatible endpoint and returns a
+ * validated structured review. Throws a descriptive error for network,
+ * HTTP, parse, or schema-validation failures.
+ */
+export async function generateReview(
+  diffDetail: BranchDiffDetail,
+  config: AiApiConfig,
+): Promise<AiReviewResponse> {
+  const content = await callChatCompletion(
+    config,
+    SYSTEM_PROMPT,
+    `Review the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`,
+  );
+
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(extractJsonPayload(content));
@@ -221,6 +235,52 @@ export async function generateReview(
   if (!result.success) {
     console.error("AI review response failed validation:", result.error.issues);
     throw new Error("The AI response didn't match the expected review format.");
+  }
+
+  return result.data;
+}
+
+const prMetadataSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+});
+
+export type PrMetadata = z.infer<typeof prMetadataSchema>;
+
+const PR_SYSTEM_PROMPT = `You are a senior engineer writing a pull request title and description for the given branch diff, provided in the same FILE:/HUNK: format used for code review.
+
+Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
+{
+  "title": string (a short, imperative summary of the change, under 72 characters, no trailing period),
+  "description": string (a concise markdown summary of what changed and why, based only on the diff; use short paragraphs and/or a bullet list)
+}`;
+
+/**
+ * Sends the diff to the configured OpenAI-compatible endpoint and returns a
+ * generated PR title and description. Throws a descriptive error for
+ * network, HTTP, parse, or schema-validation failures.
+ */
+export async function generatePrMetadata(
+  diffDetail: BranchDiffDetail,
+  config: AiApiConfig,
+): Promise<PrMetadata> {
+  const content = await callChatCompletion(
+    config,
+    PR_SYSTEM_PROMPT,
+    `Write a PR title and description for the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`,
+  );
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(extractJsonPayload(content));
+  } catch {
+    throw new Error("The AI response wasn't valid JSON.");
+  }
+
+  const result = prMetadataSchema.safeParse(parsedJson);
+  if (!result.success) {
+    console.error("AI PR metadata response failed validation:", result.error.issues);
+    throw new Error("The AI response didn't match the expected PR format.");
   }
 
   return result.data;
