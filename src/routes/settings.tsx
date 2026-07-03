@@ -43,6 +43,10 @@ const formSchema = z.object({
     .number()
     .int("Must be a whole number")
     .positive("Must be a positive number"),
+  contextWindow: z
+    .number()
+    .int("Must be a whole number")
+    .positive("Must be a positive number"),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -53,6 +57,7 @@ const DEFAULT_VALUES: FormValues = {
   model: "",
   temperature: 0.3,
   maxTokens: 4096,
+  contextWindow: 8192,
 };
 
 function SettingsScreen() {
@@ -206,6 +211,26 @@ function SettingsScreen() {
                   </FieldDescription>
                   {errors.maxTokens && (
                     <FieldError>{errors.maxTokens.message}</FieldError>
+                  )}
+                </Field>
+
+                <Field data-invalid={!!errors.contextWindow}>
+                  <FieldLabel htmlFor="contextWindow">
+                    Context window (tokens)
+                  </FieldLabel>
+                  <Input
+                    id="contextWindow"
+                    type="number"
+                    min={1}
+                    aria-invalid={!!errors.contextWindow}
+                    {...register("contextWindow", { valueAsNumber: true })}
+                  />
+                  <FieldDescription>
+                    Your model&apos;s total token limit (input + output).
+                    Requests that would exceed it are blocked before sending.
+                  </FieldDescription>
+                  {errors.contextWindow && (
+                    <FieldError>{errors.contextWindow.message}</FieldError>
                   )}
                 </Field>
               </FieldGroup>

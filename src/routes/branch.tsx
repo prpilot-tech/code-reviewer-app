@@ -19,7 +19,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  checkContextWindow,
+  contextWindowErrorMessage,
+  estimateReviewPromptTokens,
+  loadAiApiConfig,
+} from "@/lib/ai";
+import {
   getBranchCommits,
+  getBranchDiffDetail,
   getBranchDiffSummary,
   getRepoInfo,
   listBranches,
@@ -86,6 +93,10 @@ function BranchScreen() {
   const [diffSummary, setDiffSummary] = useState<BranchDiffSummary | null>(
     null,
   );
+  const [estimatedTokens, setEstimatedTokens] = useState<number | null>(null);
+  const [contextWindowWarning, setContextWindowWarning] = useState<
+    string | null
+  >(null);
   const [diffLoading, setDiffLoading] = useState(false);
 
   useEffect(() => {
@@ -138,13 +149,28 @@ function BranchScreen() {
   useEffect(() => {
     if (!folder || !canGenerate) {
       setDiffSummary(null);
+      setEstimatedTokens(null);
+      setContextWindowWarning(null);
       return;
     }
     let cancelled = false;
     setDiffLoading(true);
-    getBranchDiffSummary(folder, baseBranch, compareBranch)
-      .then((summary) => {
-        if (!cancelled) setDiffSummary(summary);
+    Promise.all([
+      getBranchDiffSummary(folder, baseBranch, compareBranch),
+      getBranchDiffDetail(folder, baseBranch, compareBranch),
+      loadAiApiConfig(),
+    ])
+      .then(([summary, detail, config]) => {
+        if (cancelled) return;
+        setDiffSummary(summary);
+        const tokens = estimateReviewPromptTokens(detail);
+        setEstimatedTokens(tokens);
+        const windowCheck = config ? checkContextWindow(tokens, config) : null;
+        setContextWindowWarning(
+          windowCheck && !windowCheck.ok
+            ? contextWindowErrorMessage(windowCheck)
+            : null,
+        );
       })
       .catch((err) => {
         if (!cancelled)
@@ -355,8 +381,22 @@ function BranchScreen() {
                     {diffLoading
                       ? "Calculating diff…"
                       : diffSummary
-                        ? `${diffSummary.commitCount} commit${diffSummary.commitCount === 1 ? "" : "s"} • ${diffSummary.filesChanged} file${diffSummary.filesChanged === 1 ? "" : "s"} changed • +${diffSummary.insertions} / -${diffSummary.deletions}`
+                        ? `${diffSummary.commitCount} commit${diffSummary.commitCount === 1 ? "" : "s"} • ${diffSummary.filesChanged} file${diffSummary.filesChanged === 1 ? "" : "s"} changed • +${diffSummary.insertions} / -${diffSummary.deletions}${estimatedTokens !== null ? ` • ~${estimatedTokens.toLocaleString()} tokens` : ""}`
                         : null}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence initial={false}>
+                {!diffLoading && contextWindowWarning && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="text-amber-600 text-center text-xs dark:text-amber-400"
+                  >
+                    {contextWindowWarning}
                   </motion.p>
                 )}
               </AnimatePresence>

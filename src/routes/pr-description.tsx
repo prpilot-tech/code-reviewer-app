@@ -44,7 +44,7 @@ function PrDescriptionScreen() {
   const [meta, setMeta] = useState<PrMetadata | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (isCancelled: () => boolean = () => false) => {
     setState({ status: "loading", label: "Reading the diff…" });
     setMeta(null);
 
@@ -53,6 +53,7 @@ function PrDescriptionScreen() {
       getStoreValue<string>(BASE_BRANCH_KEY),
       getStoreValue<string>(COMPARE_BRANCH_KEY),
     ]);
+    if (isCancelled()) return;
 
     if (!folder || !baseBranch || !compareBranch) {
       setState({ status: "missing-selection" });
@@ -60,6 +61,7 @@ function PrDescriptionScreen() {
     }
 
     const config = await loadAiApiConfig();
+    if (isCancelled()) return;
     if (!config) {
       setState({ status: "not-configured" });
       return;
@@ -69,11 +71,13 @@ function PrDescriptionScreen() {
     try {
       diff = await getBranchDiffDetail(folder, baseBranch, compareBranch);
     } catch (err) {
+      if (isCancelled()) return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
       setState({ status: "error", message });
       return;
     }
+    if (isCancelled()) return;
 
     const hasChanges = diff.files.some(
       (file) => file.hunks.length > 0 || file.isBinary,
@@ -87,6 +91,7 @@ function PrDescriptionScreen() {
 
     try {
       const generated = await generatePrMetadata(diff, config);
+      if (isCancelled()) return;
       setMeta(generated);
       setState({
         status: "ready",
@@ -96,6 +101,7 @@ function PrDescriptionScreen() {
         diff,
       });
     } catch (err) {
+      if (isCancelled()) return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
       setState({ status: "error", message });
@@ -103,7 +109,11 @@ function PrDescriptionScreen() {
   }, []);
 
   useEffect(() => {
-    run();
+    let cancelled = false;
+    run(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [run]);
 
   const handleCreatePr = async () => {

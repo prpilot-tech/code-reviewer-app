@@ -11,6 +11,7 @@ const aiApiConfigSchema = z.object({
   model: z.string().min(1),
   temperature: z.number().min(0).max(1),
   maxTokens: z.number().int().positive(),
+  contextWindow: z.number().int().positive().default(8192),
 });
 
 export type AiApiConfig = z.infer<typeof aiApiConfigSchema>;
@@ -136,9 +137,74 @@ Respond with a single JSON object only, no prose outside the JSON, matching exac
 
 Findings should be specific and actionable. If there are truly no changes to comment on, return an empty findings array — but treat that as rare, not the default.`;
 
+/**
+ * Rough token estimate for arbitrary text, using the common ~4-characters-
+ * per-token approximation for English text. Actual tokenizers vary by model,
+ * so treat this as a ballpark figure rather than an exact count.
+ */
+export function estimateTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function estimatePromptTokens(systemPrompt: string, userContent: string) {
+  return estimateTokenCount(systemPrompt) + estimateTokenCount(userContent);
+}
+
+/**
+ * Estimates the input (prompt) tokens a review request will consume, using
+ * the same system prompt and diff text `generateReview` sends to the model.
+ */
+export function estimateReviewPromptTokens(
+  diffDetail: BranchDiffDetail,
+): number {
+  return estimatePromptTokens(
+    SYSTEM_PROMPT,
+    `Review the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`,
+  );
+}
+
+export interface ContextWindowCheck {
+  ok: boolean;
+  estimatedInputTokens: number;
+  maxOutputTokens: number;
+  contextWindow: number;
+}
+
+/**
+ * Checks whether a request's estimated input tokens plus the configured
+ * output cap (`maxTokens`) fit inside the model's context window, so
+ * oversized requests can be rejected before making a network call.
+ */
+export function checkContextWindow(
+  estimatedInputTokens: number,
+  config: Pick<AiApiConfig, "maxTokens" | "contextWindow">,
+): ContextWindowCheck {
+  return {
+    ok: estimatedInputTokens + config.maxTokens <= config.contextWindow,
+    estimatedInputTokens,
+    maxOutputTokens: config.maxTokens,
+    contextWindow: config.contextWindow,
+  };
+}
+
+export function contextWindowErrorMessage(check: ContextWindowCheck): string {
+  const total = check.estimatedInputTokens + check.maxOutputTokens;
+  return (
+    `This request needs about ${total.toLocaleString()} tokens ` +
+    `(${check.estimatedInputTokens.toLocaleString()} input + up to ${check.maxOutputTokens.toLocaleString()} output), ` +
+    `which exceeds the ${check.contextWindow.toLocaleString()}-token context window set in Settings. ` +
+    `Lower Max Tokens, review a smaller diff, or raise the context window if your model supports more.`
+  );
+}
+
 interface ChatCompletionResponse {
-  choices?: { message?: { content?: string } }[];
+  choices?: { message?: { content?: string }; finish_reason?: string }[];
   error?: { message?: string };
+}
+
+interface ChatCompletionResult {
+  content: string;
+  truncated: boolean;
 }
 
 /**
@@ -169,7 +235,7 @@ async function callChatCompletion(
   config: AiApiConfig,
   systemPrompt: string,
   userContent: string,
-): Promise<string> {
+): Promise<ChatCompletionResult> {
   let response: Response;
   try {
     response = await fetch(config.apiUrl, {
@@ -207,12 +273,13 @@ async function callChatCompletion(
   }
 
   const body = (await response.json()) as ChatCompletionResponse;
-  const content = body.choices?.[0]?.message?.content;
+  const choice = body.choices?.[0];
+  const content = choice?.message?.content;
   if (!content) {
     throw new Error("The AI response didn't include any content.");
   }
 
-  return content;
+  return { content, truncated: choice?.finish_reason === "length" };
 }
 
 /**
@@ -224,7 +291,15 @@ export async function generateReview(
   diffDetail: BranchDiffDetail,
   config: AiApiConfig,
 ): Promise<AiReviewResponse> {
-  const content = await callChatCompletion(
+  const windowCheck = checkContextWindow(
+    estimateReviewPromptTokens(diffDetail),
+    config,
+  );
+  if (!windowCheck.ok) {
+    throw new Error(contextWindowErrorMessage(windowCheck));
+  }
+
+  const { content, truncated } = await callChatCompletion(
     config,
     SYSTEM_PROMPT,
     `Review the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`,
@@ -234,6 +309,11 @@ export async function generateReview(
   try {
     parsedJson = JSON.parse(extractJsonPayload(content));
   } catch {
+    if (truncated) {
+      throw new Error(
+        "The AI response was cut off before it finished (max tokens reached). Increase Max Tokens in Settings or review a smaller diff, then try again.",
+      );
+    }
     throw new Error("The AI response wasn't valid JSON.");
   }
 
@@ -270,22 +350,39 @@ export async function generatePrMetadata(
   diffDetail: BranchDiffDetail,
   config: AiApiConfig,
 ): Promise<PrMetadata> {
-  const content = await callChatCompletion(
+  const userContent = `Write a PR title and description for the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`;
+  const windowCheck = checkContextWindow(
+    estimatePromptTokens(PR_SYSTEM_PROMPT, userContent),
+    config,
+  );
+  if (!windowCheck.ok) {
+    throw new Error(contextWindowErrorMessage(windowCheck));
+  }
+
+  const { content, truncated } = await callChatCompletion(
     config,
     PR_SYSTEM_PROMPT,
-    `Write a PR title and description for the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`,
+    userContent,
   );
 
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(extractJsonPayload(content));
   } catch {
+    if (truncated) {
+      throw new Error(
+        "The AI response was cut off before it finished (max tokens reached). Increase Max Tokens in Settings or review a smaller diff, then try again.",
+      );
+    }
     throw new Error("The AI response wasn't valid JSON.");
   }
 
   const result = prMetadataSchema.safeParse(parsedJson);
   if (!result.success) {
-    console.error("AI PR metadata response failed validation:", result.error.issues);
+    console.error(
+      "AI PR metadata response failed validation:",
+      result.error.issues,
+    );
     throw new Error("The AI response didn't match the expected PR format.");
   }
 

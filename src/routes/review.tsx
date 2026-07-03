@@ -345,7 +345,7 @@ function ReviewScreen() {
     label: "Reading the diff…",
   });
 
-  const runReview = useCallback(async () => {
+  const runReview = useCallback(async (isCancelled: () => boolean = () => false) => {
     setState({ status: "loading", label: "Reading the diff…" });
 
     const [folder, baseBranch, compareBranch] = await Promise.all([
@@ -353,6 +353,7 @@ function ReviewScreen() {
       getStoreValue<string>(BASE_BRANCH_KEY),
       getStoreValue<string>(COMPARE_BRANCH_KEY),
     ]);
+    if (isCancelled()) return;
 
     if (!folder || !baseBranch || !compareBranch) {
       setState({ status: "missing-selection" });
@@ -360,6 +361,7 @@ function ReviewScreen() {
     }
 
     const config = await loadAiApiConfig();
+    if (isCancelled()) return;
     if (!config) {
       setState({ status: "not-configured" });
       return;
@@ -369,11 +371,13 @@ function ReviewScreen() {
     try {
       diff = await getBranchDiffDetail(folder, baseBranch, compareBranch);
     } catch (err) {
+      if (isCancelled()) return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
       setState({ status: "error", message });
       return;
     }
+    if (isCancelled()) return;
 
     const hasChanges = diff.files.some(
       (file) => file.hunks.length > 0 || file.isBinary,
@@ -387,6 +391,7 @@ function ReviewScreen() {
 
     try {
       const review = await generateReview(diff, config);
+      if (isCancelled()) return;
       setState({
         status: "ready",
         diff,
@@ -395,6 +400,7 @@ function ReviewScreen() {
         compare: compareBranch,
       });
     } catch (err) {
+      if (isCancelled()) return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
       setState({ status: "error", message });
@@ -402,7 +408,11 @@ function ReviewScreen() {
   }, []);
 
   useEffect(() => {
-    runReview();
+    let cancelled = false;
+    runReview(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [runReview]);
 
   const stats = useMemo(() => {
