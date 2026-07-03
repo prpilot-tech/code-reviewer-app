@@ -9,6 +9,7 @@ import {
   TimelineTitle,
 } from "@/components/reui/timeline";
 import { Button } from "@/components/ui/button";
+import { GitCompareArrowsIcon } from "@/components/ui/git-compare-arrows";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -411,7 +412,7 @@ function BranchScreen() {
                   disabled={!canGenerate}
                   onClick={handleGenerateReview}
                 >
-                  <GitCompare data-icon="inline-start" />
+                  <GitCompareArrowsIcon data-icon="inline-start" />
                   Generate Review
                 </Button>
               </motion.div>

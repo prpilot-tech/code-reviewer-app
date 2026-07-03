@@ -1,17 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RefreshCWIcon } from "@/components/ui/refresh-cw";
 import { Textarea } from "@/components/ui/textarea";
+import { generatePrMetadata, loadAiApiConfig, type PrMetadata } from "@/lib/ai";
 import {
-  generatePrMetadata,
-  loadAiApiConfig,
-  type PrMetadata,
-} from "@/lib/ai";
-import { getBranchDiffDetail, getRepoInfo, type BranchDiffDetail } from "@/lib/git";
+  getBranchDiffDetail,
+  getRepoInfo,
+  type BranchDiffDetail,
+} from "@/lib/git";
 import { buildComparePrUrl, parseGithubRemote } from "@/lib/github";
 import { getStoreValue } from "@/lib/store";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNavigate } from "@tanstack/react-router";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowRight, ExternalLink, GitCompare, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
@@ -87,7 +88,10 @@ function PrDescriptionScreen() {
       return;
     }
 
-    setState({ status: "loading", label: "Writing the PR title & description…" });
+    setState({
+      status: "loading",
+      label: "Writing the PR title & description…",
+    });
 
     try {
       const generated = await generatePrMetadata(diff, config);
@@ -206,7 +210,10 @@ function PrDescriptionScreen() {
             <>
               <h1 className="text-xl font-medium">Generation failed</h1>
               <p className="text-destructive text-sm">{state.message}</p>
-              <Button onClick={() => run()}>Retry</Button>
+              <Button onClick={() => run()}>
+                <RefreshCWIcon />
+                Retry
+              </Button>
             </>
           )}
         </div>

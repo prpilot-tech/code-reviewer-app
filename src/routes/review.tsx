@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { GitPullRequestIcon } from "@/components/ui/git-pull-request";
+import { RefreshCWIcon } from "@/components/ui/refresh-cw";
 import {
   buildReviewItems,
   generateReview,
@@ -18,7 +20,6 @@ import {
   Check,
   Copy,
   GitCompare,
-  GitPullRequest,
   Info,
   Lightbulb,
   Loader2,
@@ -345,7 +346,7 @@ function ReviewScreen() {
     label: "Reading the diff…",
   });
 
-  const runReview = useCallback(async (isCancelled: () => boolean = () => false) => {
+  const runReview = useCallback(async () => {
     setState({ status: "loading", label: "Reading the diff…" });
 
     const [folder, baseBranch, compareBranch] = await Promise.all([
@@ -353,7 +354,6 @@ function ReviewScreen() {
       getStoreValue<string>(BASE_BRANCH_KEY),
       getStoreValue<string>(COMPARE_BRANCH_KEY),
     ]);
-    if (isCancelled()) return;
 
     if (!folder || !baseBranch || !compareBranch) {
       setState({ status: "missing-selection" });
@@ -361,7 +361,6 @@ function ReviewScreen() {
     }
 
     const config = await loadAiApiConfig();
-    if (isCancelled()) return;
     if (!config) {
       setState({ status: "not-configured" });
       return;
@@ -371,13 +370,11 @@ function ReviewScreen() {
     try {
       diff = await getBranchDiffDetail(folder, baseBranch, compareBranch);
     } catch (err) {
-      if (isCancelled()) return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
       setState({ status: "error", message });
       return;
     }
-    if (isCancelled()) return;
 
     const hasChanges = diff.files.some(
       (file) => file.hunks.length > 0 || file.isBinary,
@@ -391,7 +388,6 @@ function ReviewScreen() {
 
     try {
       const review = await generateReview(diff, config);
-      if (isCancelled()) return;
       setState({
         status: "ready",
         diff,
@@ -400,7 +396,6 @@ function ReviewScreen() {
         compare: compareBranch,
       });
     } catch (err) {
-      if (isCancelled()) return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
       setState({ status: "error", message });
@@ -408,11 +403,7 @@ function ReviewScreen() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    runReview(() => cancelled);
-    return () => {
-      cancelled = true;
-    };
+    runReview();
   }, [runReview]);
 
   const stats = useMemo(() => {
@@ -501,7 +492,9 @@ function ReviewScreen() {
             <>
               <h1 className="text-xl font-medium">Review failed</h1>
               <p className="text-destructive text-sm">{state.message}</p>
-              <Button onClick={() => runReview()}>Retry</Button>
+              <Button onClick={() => runReview()}>
+                <RefreshCWIcon /> Retry
+              </Button>
             </>
           )}
         </div>
@@ -525,7 +518,7 @@ function ReviewScreen() {
           className="gap-2 rounded-full px-4 shadow-lg"
           onClick={() => navigate({ to: "/pr-description" })}
         >
-          <GitPullRequest className="size-4" />
+          <GitPullRequestIcon />
           Generate PR
         </Button>
       </motion.div>
@@ -670,7 +663,10 @@ function ReviewScreen() {
                               <Icon className="size-3" />
                               {meta.label}
                             </span>
-                            <CopyFindingButton item={item} className="ml-auto" />
+                            <CopyFindingButton
+                              item={item}
+                              className="ml-auto"
+                            />
                           </div>
                           <p className="text-muted-foreground text-sm">
                             {item.review}

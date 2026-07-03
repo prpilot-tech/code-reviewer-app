@@ -1,7 +1,10 @@
 import FloatingBlobs from "@/components/floating-blobs";
+import { AirplaneIcon } from "@/components/ui/airplane";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { ChevronLeftIcon } from "@/components/ui/chevron-left";
+import { ChevronRightIcon } from "@/components/ui/chevron-right";
 import { CogIcon } from "@/components/ui/cog";
 import { getStoreValue } from "@/lib/store";
 import {
@@ -10,7 +13,6 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Plane } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 
@@ -42,7 +44,7 @@ function RootScreen() {
             disabled={!canGoBack}
             onClick={() => history.back()}
           >
-            <ChevronLeft />
+            <ChevronLeftIcon />
           </Button>
           <Button
             variant="outline"
@@ -50,11 +52,11 @@ function RootScreen() {
             disabled={!canGoForward}
             onClick={() => history.forward()}
           >
-            <ChevronRight />
+            <ChevronRightIcon />
           </Button>
         </ButtonGroup>
         <Button variant={"ghost"} onClick={() => navigate({ to: "/folder" })}>
-          <Plane className="size-4" /> PR Pilot
+          <AirplaneIcon size={16} /> PR Pilot
         </Button>
         <div className="flex items-center justify-self-end gap-2">
           {name && <span className=" text-sm">{name}</span>}
