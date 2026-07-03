@@ -135,6 +135,78 @@ export async function getBranchDiffSummary(
   };
 }
 
+/** A single hunk of a unified diff, with newline-joined +/-/context-prefixed lines. */
+export interface DiffHunk {
+  id: string;
+  header: string;
+  content: string;
+}
+
+/** Per-file diff detail: change status plus the hunks that changed within it. */
+export interface DiffFileDetail {
+  path: string;
+  oldPath: string | null;
+  status: "added" | "modified" | "deleted" | "renamed";
+  isBinary: boolean;
+  hunks: DiffHunk[];
+}
+
+/** Detailed diff between two branches, with per-file hunk text. */
+export interface BranchDiffDetail {
+  files: DiffFileDetail[];
+  truncated: boolean;
+}
+
+/** Snake-case shape returned by the Tauri `get_branch_diff_detail` command. */
+interface RawDiffHunk {
+  id: string;
+  header: string;
+  content: string;
+}
+
+interface RawDiffFileDetail {
+  path: string;
+  old_path: string | null;
+  status: string;
+  is_binary: boolean;
+  hunks: RawDiffHunk[];
+}
+
+interface RawBranchDiffDetail {
+  files: RawDiffFileDetail[];
+  truncated: boolean;
+}
+
+/**
+ * Computes a detailed diff (per-file hunks, with unified-diff text) between
+ * `base` and `compare` in the repository at `path`.
+ */
+export async function getBranchDiffDetail(
+  path: string,
+  base: string,
+  compare: string,
+): Promise<BranchDiffDetail> {
+  const raw = await invoke<RawBranchDiffDetail>("get_branch_diff_detail", {
+    path,
+    base,
+    compare,
+  });
+  return {
+    files: raw.files.map((file) => ({
+      path: file.path,
+      oldPath: file.old_path,
+      status: file.status as DiffFileDetail["status"],
+      isBinary: file.is_binary,
+      hunks: file.hunks.map((hunk) => ({
+        id: hunk.id,
+        header: hunk.header,
+        content: hunk.content,
+      })),
+    })),
+    truncated: raw.truncated,
+  };
+}
+
 /** A single commit on the current branch's history. */
 export interface CommitInfo {
   hash: string;

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -201,6 +202,176 @@ fn get_branch_diff_summary(
 }
 
 #[derive(serde::Serialize)]
+struct DiffHunk {
+    id: String,
+    header: String,
+    content: String,
+}
+
+#[derive(serde::Serialize)]
+struct DiffFileDetail {
+    path: String,
+    old_path: Option<String>,
+    status: String,
+    is_binary: bool,
+    hunks: Vec<DiffHunk>,
+}
+
+#[derive(serde::Serialize)]
+struct BranchDiffDetail {
+    files: Vec<DiffFileDetail>,
+    truncated: bool,
+}
+
+#[derive(Default)]
+struct DiffWalkState {
+    files: Vec<DiffFileDetail>,
+    truncated: bool,
+    bytes_used: usize,
+    hunks_used: usize,
+}
+
+const MAX_DIFF_BYTES: usize = 200_000;
+const MAX_HUNKS: usize = 400;
+
+#[tauri::command]
+fn get_branch_diff_detail(
+    path: String,
+    base: String,
+    compare: String,
+) -> Result<BranchDiffDetail, String> {
+    let repo = git2::Repository::open(&path).map_err(|e| e.to_string())?;
+
+    let base_oid = repo
+        .revparse_single(&base)
+        .map_err(|e| e.to_string())?
+        .peel_to_commit()
+        .map_err(|e| e.to_string())?
+        .id();
+    let compare_oid = repo
+        .revparse_single(&compare)
+        .map_err(|e| e.to_string())?
+        .peel_to_commit()
+        .map_err(|e| e.to_string())?
+        .id();
+    let merge_base_oid = repo
+        .merge_base(base_oid, compare_oid)
+        .map_err(|e| e.to_string())?;
+
+    let merge_base_tree = repo
+        .find_commit(merge_base_oid)
+        .map_err(|e| e.to_string())?
+        .tree()
+        .map_err(|e| e.to_string())?;
+    let compare_tree = repo
+        .find_commit(compare_oid)
+        .map_err(|e| e.to_string())?
+        .tree()
+        .map_err(|e| e.to_string())?;
+    let diff = repo
+        .diff_tree_to_tree(Some(&merge_base_tree), Some(&compare_tree), None)
+        .map_err(|e| e.to_string())?;
+
+    let state = RefCell::new(DiffWalkState::default());
+
+    let mut file_cb = |delta: git2::DiffDelta, _progress: f32| -> bool {
+        let mut state = state.borrow_mut();
+        let status = match delta.status() {
+            git2::Delta::Added => "added",
+            git2::Delta::Deleted => "deleted",
+            git2::Delta::Renamed | git2::Delta::Copied => "renamed",
+            _ => "modified",
+        }
+        .to_string();
+
+        let new_file_path = delta
+            .new_file()
+            .path()
+            .map(|p| p.to_string_lossy().to_string());
+        let old_file_path = delta
+            .old_file()
+            .path()
+            .map(|p| p.to_string_lossy().to_string());
+        let file_path = new_file_path
+            .clone()
+            .or_else(|| old_file_path.clone())
+            .unwrap_or_default();
+        let old_path = if status == "renamed" && old_file_path != Some(file_path.clone()) {
+            old_file_path
+        } else {
+            None
+        };
+
+        state.files.push(DiffFileDetail {
+            path: file_path,
+            old_path,
+            status,
+            is_binary: delta.flags().is_binary(),
+            hunks: Vec::new(),
+        });
+        true
+    };
+
+    let mut hunk_cb = |_delta: git2::DiffDelta, hunk: git2::DiffHunk| -> bool {
+        let mut state = state.borrow_mut();
+        if state.hunks_used >= MAX_HUNKS {
+            state.truncated = true;
+            return true;
+        }
+        let file_index = state.files.len().saturating_sub(1);
+        let hunk_index = state.files.last().map(|f| f.hunks.len()).unwrap_or(0);
+        let header = String::from_utf8_lossy(hunk.header())
+            .trim_end()
+            .to_string();
+        if let Some(file) = state.files.last_mut() {
+            file.hunks.push(DiffHunk {
+                id: format!("{}-{}", file_index, hunk_index),
+                header,
+                content: String::new(),
+            });
+        }
+        state.hunks_used += 1;
+        true
+    };
+
+    let mut line_cb =
+        |_delta: git2::DiffDelta, _hunk: Option<git2::DiffHunk>, line: git2::DiffLine| -> bool {
+            let mut state = state.borrow_mut();
+            let prefix = match line.origin() {
+                '+' => "+",
+                '-' => "-",
+                _ => " ",
+            };
+            let text = String::from_utf8_lossy(line.content())
+                .trim_end_matches('\n')
+                .to_string();
+            let line_bytes = prefix.len() + text.len() + 1;
+            if state.bytes_used + line_bytes > MAX_DIFF_BYTES {
+                state.truncated = true;
+                return true;
+            }
+            state.bytes_used += line_bytes;
+            if let Some(file) = state.files.last_mut() {
+                if let Some(hunk) = file.hunks.last_mut() {
+                    hunk.content.push_str(prefix);
+                    hunk.content.push_str(&text);
+                    hunk.content.push('\n');
+                }
+            }
+            true
+        };
+
+    diff.foreach(&mut file_cb, None, Some(&mut hunk_cb), Some(&mut line_cb))
+        .map_err(|e| e.to_string())?;
+
+    let state = state.into_inner();
+    Ok(BranchDiffDetail {
+        files: state.files,
+        truncated: state.truncated,
+    })
+}
+
+#[derive(serde::Serialize)]
 struct BranchInfo {
     name: String,
     is_head: bool,
@@ -285,12 +456,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             is_git_repo,
             list_branches,
             get_repo_info,
             get_branch_diff_summary,
+            get_branch_diff_detail,
             get_branch_commits
         ])
         .run(tauri::generate_context!())

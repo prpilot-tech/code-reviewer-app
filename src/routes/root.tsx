@@ -1,32 +1,40 @@
 import FloatingBlobs from "@/components/floating-blobs";
+import { AirplaneIcon } from "@/components/ui/airplane";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { ChevronLeftIcon } from "@/components/ui/chevron-left";
+import { ChevronRightIcon } from "@/components/ui/chevron-right";
 import { CogIcon } from "@/components/ui/cog";
 import { getStoreValue } from "@/lib/store";
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Plane } from "lucide-react";
+import {
+  Outlet,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { STEPS } from "./steps";
 
 function RootScreen() {
   const navigate = useNavigate();
+  const router = useRouter();
   const [name, setName] = useState<string | null>(null);
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const currentIndex = STEPS.indexOf(pathname as (typeof STEPS)[number]);
 
   useEffect(() => {
     getStoreValue<string>("name").then((value) => setName(value ?? null));
   }, [pathname]);
 
-  const canGoBack = currentIndex > 0;
-  const canGoForward = currentIndex >= 0 && currentIndex < STEPS.length - 1;
+  const history = router.history;
+  const historyIndex = history.location.state.__TSR_index ?? 0;
+  const canGoBack = history.canGoBack();
+  const canGoForward = historyIndex < history.length - 1;
 
   return (
-    <div className="relative flex h-screen flex-col p-4">
+    <div className="relative flex min-h-screen flex-col p-4">
       <FloatingBlobs />
       <header className="relative z-10 flex items-center justify-between ">
         <ButtonGroup className="justify-self-start">
@@ -34,32 +42,32 @@ function RootScreen() {
             variant="outline"
             size="icon-sm"
             disabled={!canGoBack}
-            onClick={() => navigate({ to: STEPS[currentIndex - 1] })}
+            onClick={() => history.back()}
           >
-            <ChevronLeft />
+            <ChevronLeftIcon />
           </Button>
           <Button
             variant="outline"
             size="icon-sm"
             disabled={!canGoForward}
-            onClick={() => navigate({ to: STEPS[currentIndex + 1] })}
+            onClick={() => history.forward()}
           >
-            <ChevronRight />
+            <ChevronRightIcon />
           </Button>
         </ButtonGroup>
-        <span className=" flex gap-1 justify-self-center text-sm font-medium">
-          <Plane className="size-4" /> PR Pilot
-        </span>
+        <Button variant={"ghost"} onClick={() => navigate({ to: "/folder" })}>
+          <AirplaneIcon size={16} /> PR Pilot
+        </Button>
         <div className="flex items-center justify-self-end gap-2">
           {name && <span className=" text-sm">{name}</span>}
           <AnimatedThemeToggler />
           <Button
             variant="ghost"
-            size="icon-lg"
+            className="size-5 rounded-full p-0"
             aria-label="Settings"
             onClick={() => navigate({ to: "/settings" })}
           >
-            <CogIcon size={18} />
+            <CogIcon />
           </Button>
         </div>
       </header>

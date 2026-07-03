@@ -33,11 +33,17 @@ import { z } from "zod";
 const STORE_KEY = "aiApiConfig";
 
 const formSchema = z.object({
-  apiUrl: z.string().url("Enter a valid URL"),
+  apiUrl: z.url({
+    message: "Enter a valid URL, e.g. http://127.0.0.1:1234/v1/chat/completions",
+  }),
   apiKey: z.string().min(1, "API key is required"),
   model: z.string().min(1, "Model is required"),
   temperature: z.number().min(0).max(1),
   maxTokens: z
+    .number()
+    .int("Must be a whole number")
+    .positive("Must be a positive number"),
+  contextWindow: z
     .number()
     .int("Must be a whole number")
     .positive("Must be a positive number"),
@@ -51,6 +57,7 @@ const DEFAULT_VALUES: FormValues = {
   model: "",
   temperature: 0.3,
   maxTokens: 4096,
+  contextWindow: 8192,
 };
 
 function SettingsScreen() {
@@ -204,6 +211,26 @@ function SettingsScreen() {
                   </FieldDescription>
                   {errors.maxTokens && (
                     <FieldError>{errors.maxTokens.message}</FieldError>
+                  )}
+                </Field>
+
+                <Field data-invalid={!!errors.contextWindow}>
+                  <FieldLabel htmlFor="contextWindow">
+                    Context window (tokens)
+                  </FieldLabel>
+                  <Input
+                    id="contextWindow"
+                    type="number"
+                    min={1}
+                    aria-invalid={!!errors.contextWindow}
+                    {...register("contextWindow", { valueAsNumber: true })}
+                  />
+                  <FieldDescription>
+                    Your model&apos;s total token limit (input + output).
+                    Requests that would exceed it are blocked before sending.
+                  </FieldDescription>
+                  {errors.contextWindow && (
+                    <FieldError>{errors.contextWindow.message}</FieldError>
                   )}
                 </Field>
               </FieldGroup>
