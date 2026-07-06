@@ -6,12 +6,8 @@ Built with [Tauri](https://tauri.app/) + React + TypeScript on the frontend and 
 
 ## Screenshots
 
-<!--
-  Add app screenshots here, e.g.:
-  ![Folder selection](docs/screenshots/folder.png)
-  ![Branch comparison](docs/screenshots/branch.png)
-  ![Settings](docs/screenshots/settings.png)
--->
+<img width="2560" height="1664" alt="image" src="https://github.com/user-attachments/assets/5a239b3a-8e35-48cb-9859-f8a1b54fbee8" />
+
 
 ## Features
 
