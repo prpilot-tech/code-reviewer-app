@@ -3,7 +3,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RefreshCWIcon } from "@/components/ui/refresh-cw";
 import { Textarea } from "@/components/ui/textarea";
-import { generatePrMetadata, loadAiApiConfig, type PrMetadata } from "@/lib/ai";
+import {
+  generatePrMetadata,
+  loadAiApiConfig,
+  resolvePrTemplates,
+  type PrMetadata,
+} from "@/lib/ai";
 import {
   getBranchDiffDetail,
   getRepoInfo,
@@ -93,8 +98,11 @@ function PrDescriptionScreen() {
       label: "Writing the PR title & description…",
     });
 
+    const templates = await resolvePrTemplates(folder);
+    if (isCancelled()) return;
+
     try {
-      const generated = await generatePrMetadata(diff, config);
+      const generated = await generatePrMetadata(diff, config, templates);
       if (isCancelled()) return;
       setMeta(generated);
       setState({
@@ -238,6 +246,13 @@ function PrDescriptionScreen() {
             <ArrowRight className="size-3.5 shrink-0" />
             <span className="truncate">{base}</span>
           </div>
+          {meta?.templateUsed && (
+            <p className="text-muted-foreground text-xs">
+              Filled from the{" "}
+              <span className="font-medium">{meta.templateUsed}</span>{" "}
+              template
+            </p>
+          )}
         </motion.div>
 
         <motion.div

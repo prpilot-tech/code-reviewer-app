@@ -1,4 +1,9 @@
-import type { BranchDiffDetail, DiffHunk } from "@/lib/git";
+import { findPrTemplates, type BranchDiffDetail, type DiffHunk } from "@/lib/git";
+import {
+  PR_TEMPLATE_TYPES,
+  PR_TEMPLATES_STORE_KEY,
+  type PrTemplateSettings,
+} from "@/lib/pr-templates";
 import { getStoreValue } from "@/lib/store";
 import { fetch } from "@tauri-apps/plugin-http";
 import { z } from "zod";
@@ -329,30 +334,96 @@ export async function generateReview(
 const prMetadataSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
+  templateUsed: z.string().nullable().optional(),
 });
 
 export type PrMetadata = z.infer<typeof prMetadataSchema>;
 
-const PR_SYSTEM_PROMPT = `You are a senior engineer writing a pull request title and description for the given branch diff, provided in the same FILE:/HUNK: format used for code review.
+/** A named PR template the AI can be asked to fill in. */
+export interface PrTemplateOption {
+  name: string;
+  content: string;
+}
+
+/**
+ * Finds the PR template(s) that should guide description generation for
+ * `folder`: the repo's own GitHub/GitLab template(s) take priority, falling
+ * back to the user's per-type templates saved in Settings when the repo
+ * doesn't define one. Returns an empty array if neither exists, in which
+ * case generation falls back to a freeform description.
+ */
+export async function resolvePrTemplates(
+  folder: string,
+): Promise<PrTemplateOption[]> {
+  const repoTemplates = await findPrTemplates(folder);
+  if (repoTemplates.length > 0) {
+    return repoTemplates.map((t) => ({ name: t.name, content: t.content }));
+  }
+
+  const settings = await getStoreValue<PrTemplateSettings>(
+    PR_TEMPLATES_STORE_KEY,
+  );
+  if (!settings) return [];
+
+  return PR_TEMPLATE_TYPES.filter((type) => settings[type.key]?.trim()).map(
+    (type) => ({ name: type.label, content: settings[type.key]!.trim() }),
+  );
+}
+
+function buildPrSystemPrompt(templates: PrTemplateOption[]): string {
+  const base = `You are a senior engineer writing a pull request title and description for the given branch diff, provided in the same FILE:/HUNK: format used for code review.`;
+
+  if (templates.length === 0) {
+    return `${base}
 
 Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
 {
   "title": string (a short, imperative summary of the change, under 72 characters, no trailing period),
   "description": string (a concise markdown summary of what changed and why, based only on the diff; use short paragraphs and/or a bullet list)
 }`;
+  }
+
+  const templateBlocks = templates
+    .map((t) => `--- TEMPLATE "${t.name}" ---\n${t.content}`)
+    .join("\n\n");
+  const pickInstruction =
+    templates.length > 1
+      ? "Pick the single template above that best fits the nature of this change (e.g. a bug fix vs a new feature vs a docs-only change vs a refactor), then fill it in completely."
+      : "Fill in the template completely.";
+
+  return `${base}
+
+This project provides ${templates.length > 1 ? "the following PR templates" : "a PR template"} that the description must follow:
+
+${templateBlocks}
+
+${pickInstruction} Keep the template's section headers, structure, and any checkboxes intact; replace placeholder/instructional text with real content based on the diff, and check off checkboxes where the diff supports it. Do not invent new sections and do not include the unused templates in your answer.
+
+Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
+{
+  "title": string (a short, imperative summary of the change, under 72 characters, no trailing period),
+  "description": string (the filled-in template as markdown, based only on the diff),
+  "templateUsed": string (the exact name of the template you filled in, from the list above)
+}`;
+}
 
 /**
  * Sends the diff to the configured OpenAI-compatible endpoint and returns a
- * generated PR title and description. Throws a descriptive error for
- * network, HTTP, parse, or schema-validation failures.
+ * generated PR title and description. When `templates` is non-empty, the AI
+ * is instructed to fill in the best-matching template (auto-selecting when
+ * more than one is given) instead of writing a freeform description. Throws
+ * a descriptive error for network, HTTP, parse, or schema-validation
+ * failures.
  */
 export async function generatePrMetadata(
   diffDetail: BranchDiffDetail,
   config: AiApiConfig,
+  templates: PrTemplateOption[] = [],
 ): Promise<PrMetadata> {
+  const systemPrompt = buildPrSystemPrompt(templates);
   const userContent = `Write a PR title and description for the following branch diff:\n\n${buildDiffPromptText(diffDetail)}`;
   const windowCheck = checkContextWindow(
-    estimatePromptTokens(PR_SYSTEM_PROMPT, userContent),
+    estimatePromptTokens(systemPrompt, userContent),
     config,
   );
   if (!windowCheck.ok) {
@@ -361,7 +432,7 @@ export async function generatePrMetadata(
 
   const { content, truncated } = await callChatCompletion(
     config,
-    PR_SYSTEM_PROMPT,
+    systemPrompt,
     userContent,
   );
 

@@ -225,3 +225,19 @@ export async function getBranchCommits(
 ): Promise<CommitInfo[]> {
   return invoke<CommitInfo[]>("get_branch_commits", { path, limit });
 }
+
+/** A named PR/MR template found in the repository. */
+export interface PrTemplateFile {
+  name: string;
+  content: string;
+}
+
+/**
+ * Looks for GitHub/GitLab PR template files in the repository at `path`
+ * (e.g. `.github/pull_request_template.md` or a `.github/PULL_REQUEST_TEMPLATE/`
+ * directory of multiple named templates). Returns an empty array if none
+ * are found.
+ */
+export async function findPrTemplates(path: string): Promise<PrTemplateFile[]> {
+  return invoke<PrTemplateFile[]>("find_pr_templates", { path });
+}

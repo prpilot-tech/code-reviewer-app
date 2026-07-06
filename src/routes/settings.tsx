@@ -22,6 +22,12 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  PR_TEMPLATE_TYPES,
+  PR_TEMPLATES_STORE_KEY,
+  type PrTemplateSettings,
+} from "@/lib/pr-templates";
 import { getStoreValue, setStoreValue } from "@/lib/store";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff } from "lucide-react";
@@ -31,6 +37,10 @@ import toast from "react-hot-toast";
 import { z } from "zod";
 
 const STORE_KEY = "aiApiConfig";
+
+const PR_TEMPLATE_DEFAULTS: PrTemplateSettings = Object.fromEntries(
+  PR_TEMPLATE_TYPES.map((type) => [type.key, ""]),
+);
 
 const formSchema = z.object({
   apiUrl: z.url({
@@ -87,6 +97,26 @@ function SettingsScreen() {
   };
 
   const temperature = watch("temperature");
+
+  const {
+    register: registerTemplate,
+    handleSubmit: handleTemplatesSubmit,
+    reset: resetTemplates,
+    formState: { isSubmitting: isSubmittingTemplates },
+  } = useForm<PrTemplateSettings>({
+    defaultValues: PR_TEMPLATE_DEFAULTS,
+  });
+
+  useEffect(() => {
+    getStoreValue<PrTemplateSettings>(PR_TEMPLATES_STORE_KEY).then((value) => {
+      if (value) resetTemplates({ ...PR_TEMPLATE_DEFAULTS, ...value });
+    });
+  }, [resetTemplates]);
+
+  const onSubmitTemplates = async (values: PrTemplateSettings) => {
+    await setStoreValue(PR_TEMPLATES_STORE_KEY, values);
+    toast.success("PR templates saved");
+  };
 
   return (
     <div className="flex items-center justify-center">
@@ -237,6 +267,43 @@ function SettingsScreen() {
             </CardContent>
             <CardFooter className="justify-end">
               <Button type="submit" disabled={isSubmitting}>
+                Save
+              </Button>
+            </CardFooter>
+          </Card>
+        </form>
+
+        <form onSubmit={handleTemplatesSubmit(onSubmitTemplates)}>
+          <Card>
+            <CardHeader>
+              <CardTitle>PR Templates</CardTitle>
+              <CardDescription>
+                Fallback templates used to generate the PR description when
+                the repo doesn&apos;t have its own (checked in{" "}
+                <span className="font-mono">.github/</span> or{" "}
+                <span className="font-mono">.gitlab/</span>). The AI picks
+                whichever type best matches the change.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                {PR_TEMPLATE_TYPES.map((type) => (
+                  <Field key={type.key}>
+                    <FieldLabel htmlFor={`pr-template-${type.key}`}>
+                      {type.label}
+                    </FieldLabel>
+                    <Textarea
+                      id={`pr-template-${type.key}`}
+                      className="min-h-24 font-mono text-sm"
+                      placeholder={`Paste your ${type.label.toLowerCase()} PR template here…`}
+                      {...registerTemplate(type.key)}
+                    />
+                  </Field>
+                ))}
+              </FieldGroup>
+            </CardContent>
+            <CardFooter className="justify-end">
+              <Button type="submit" disabled={isSubmittingTemplates}>
                 Save
               </Button>
             </CardFooter>

@@ -450,6 +450,72 @@ fn get_branch_commits(path: String, limit: usize) -> Result<Vec<CommitInfo>, Str
     Ok(commits)
 }
 
+#[derive(serde::Serialize)]
+struct PrTemplateFile {
+    name: String,
+    content: String,
+}
+
+/// Directories that may hold multiple named PR/MR templates (GitHub's
+/// multi-template convention, and GitLab's merge request templates).
+const PR_TEMPLATE_DIRS: &[&str] = &[
+    ".github/PULL_REQUEST_TEMPLATE",
+    ".gitlab/merge_request_templates",
+];
+
+/// Single-file PR template locations, checked in order, first match wins.
+const PR_TEMPLATE_FILES: &[&str] = &[
+    ".github/pull_request_template.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "docs/pull_request_template.md",
+    "docs/PULL_REQUEST_TEMPLATE.md",
+    "pull_request_template.md",
+    "PULL_REQUEST_TEMPLATE.md",
+];
+
+/// Looks for GitHub/GitLab PR template files in the repository at `path`,
+/// preferring a directory of multiple named templates over a single file.
+#[tauri::command]
+fn find_pr_templates(path: String) -> Result<Vec<PrTemplateFile>, String> {
+    let root = std::path::Path::new(&path);
+    let mut templates = Vec::new();
+
+    for dir in PR_TEMPLATE_DIRS {
+        let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            if let Ok(content) = std::fs::read_to_string(&entry_path) {
+                let name = entry_path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "template".to_string());
+                templates.push(PrTemplateFile { name, content });
+            }
+        }
+    }
+
+    if !templates.is_empty() {
+        return Ok(templates);
+    }
+
+    for file in PR_TEMPLATE_FILES {
+        if let Ok(content) = std::fs::read_to_string(root.join(file)) {
+            templates.push(PrTemplateFile {
+                name: "default".to_string(),
+                content,
+            });
+            break;
+        }
+    }
+
+    Ok(templates)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -464,7 +530,8 @@ pub fn run() {
             get_repo_info,
             get_branch_diff_summary,
             get_branch_diff_detail,
-            get_branch_commits
+            get_branch_commits,
+            find_pr_templates
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
