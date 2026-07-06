@@ -1,6 +1,6 @@
 # PR Pilot
 
-PR Pilot is a lightweight desktop app for reviewing your work before it becomes a pull request. Point it at a local git repository, compare two branches, and (soon) get an AI-generated code review and PR description — all running locally, with your own API key.
+PR Pilot is a lightweight desktop app for reviewing your work before it becomes a pull request. Point it at a local git repository, compare two branches, and get an AI-generated code review and PR description — all running locally, with your own API key.
 
 Built with [Tauri](https://tauri.app/) + React + TypeScript on the frontend and Rust (`git2`) for local git access.
 
@@ -20,7 +20,8 @@ Built with [Tauri](https://tauri.app/) + React + TypeScript on the frontend and 
 - **Branch comparison** — pick a base and compare branch, see commit count, files changed, and insertion/deletion stats
 - **Commit timeline** — scrollable history of the current branch's commits
 - **Configurable AI provider** — point at any OpenAI-compatible endpoint (model, temperature, max tokens), stored locally
-- **AI code review & PR description generation** — planned; screens are scaffolded and wired into the workflow, implementation in progress
+- **AI code review** — sends the diff for analysis, with severity-tagged findings mapped to specific files/hunks and per-category quality scores
+- **PR description generation** — AI-written title and description, honoring the repo's own PR template (or a fallback saved in Settings) and editable before use; can open a prefilled GitHub "Create PR" page directly
 
 ## Getting Started
 

@@ -174,15 +174,15 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Tauri app running, settings working, config persisted
 
-- [ ] Tauri project initialized with React
-- [ ] shadcn/ui components installed and working
-- [ ] Tailwind CSS configured
-- [ ] File picker component for repo selection
-- [ ] Settings page UI built (API key, URL, model inputs)
-- [ ] Config file creation in ~/.codereview-app/
-- [ ] Load config on app startup
-- [ ] Save config on settings change
-- [ ] Recent repos list displayed and clickable
+- [x] Tauri project initialized with React
+- [x] shadcn/ui components installed and working
+- [x] Tailwind CSS configured
+- [x] File picker component for repo selection
+- [x] Settings page UI built (API key, URL, model inputs)
+- [ ] Config file creation in ~/.codereview-app/ (uses `@tauri-apps/plugin-store`'s disk-backed `pr-pilot.json` instead)
+- [x] Load config on app startup
+- [x] Save config on settings change
+- [x] Recent repos list displayed and clickable
 - [ ] API key validation (attempt connection on save)
 
 **Deliverable:** Can open app, configure API, select repo, see it persist
@@ -193,13 +193,13 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Branch listing and diff retrieval working
 
-- [ ] SimpleGit library integrated
-- [ ] Get branches list from selected repo
-- [ ] Display branches with last commit info
-- [ ] Select two branches for comparison
-- [ ] Retrieve diff between branches
-- [ ] Extract file change statistics
-- [ ] Handle git errors (bad repo, detached HEAD, etc.)
+- [ ] SimpleGit library integrated (used Rust `git2` behind Tauri commands instead)
+- [x] Get branches list from selected repo
+- [x] Display branches with last commit info
+- [x] Select two branches for comparison
+- [x] Retrieve diff between branches
+- [x] Extract file change statistics
+- [x] Handle git errors (bad repo, detached HEAD, etc.)
 - [ ] Test on 3+ real repositories
 
 **Deliverable:** Can see branches and get diff output
@@ -210,15 +210,15 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Display diffs with syntax highlighting
 
-- [ ] Diff viewer component integrated (react-diff-viewer-continued or equivalent)
-- [ ] Render unified diff view
+- [x] Diff viewer component integrated (custom-built hunk/line renderer, not react-diff-viewer-continued)
+- [x] Render unified diff view
 - [ ] Render side-by-side diff view (toggleable)
 - [ ] Syntax highlighting for JS, Python, Go, Rust, TypeScript, etc.
-- [ ] Line numbers visible
-- [ ] File list with change stats displayed above diff
-- [ ] Handle large diffs (truncate at 1MB with "show more" button)
-- [ ] Handle binary files gracefully (show message, don't crash)
-- [ ] Responsive layout for different screen sizes
+- [x] Line numbers visible
+- [ ] File list with change stats displayed above diff (findings are grouped by file, but there's no standalone file/stats list above the diff)
+- [ ] Handle large diffs (truncate at 1MB with "show more" button) — backend sets a `truncated` flag but there's no "show more" UI
+- [x] Handle binary files gracefully (show message, don't crash)
+- [x] Responsive layout for different screen sizes
 
 **Deliverable:** View diffs clearly with syntax highlighting
 
@@ -228,18 +228,18 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Connect to Claude API and display analysis
 
-- [ ] Anthropic SDK integrated into React
-- [ ] "Analyze with AI" button added to diff view
-- [ ] Send diff + file context to Claude API
-- [ ] Parse Claude response
-- [ ] Display analysis results with severity levels
-- [ ] Map findings to specific lines in diff
-- [ ] Show detailed explanations for each finding
-- [ ] Display token usage and estimated cost
-- [ ] Handle API rate limiting
-- [ ] Handle API timeouts (show retry option)
-- [ ] Handle API errors (show helpful messages)
-- [ ] Loading state while waiting for analysis
+- [ ] Anthropic SDK integrated into React (uses a generic `fetch` against any OpenAI-compatible endpoint instead, by design — not Claude-specific)
+- [x] "Analyze with AI" button added to diff view (review auto-runs on entering `/review`, reached via a "Generate Review" button)
+- [x] Send diff + file context to Claude API
+- [x] Parse Claude response
+- [x] Display analysis results with severity levels
+- [x] Map findings to specific lines in diff
+- [x] Show detailed explanations for each finding
+- [ ] Display token usage and estimated cost (token estimate shown; no $ cost estimate)
+- [ ] Handle API rate limiting (no rate-limit-specific handling, only generic HTTP error messages)
+- [x] Handle API timeouts (show retry option)
+- [x] Handle API errors (show helpful messages)
+- [x] Loading state while waiting for analysis
 
 **Deliverable:** Click analyze → get AI code review
 
@@ -249,15 +249,15 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Generate PR descriptions from diff analysis
 
-- [ ] PR generation button added
-- [ ] Generate PR title from diff/analysis
-- [ ] Generate description: summary, changes, scope
-- [ ] Generate testing notes section
-- [ ] Option to include AI findings in description
-- [ ] Format entire PR output as copyable text
-- [ ] Copy to clipboard button (one-click)
+- [x] PR generation button added
+- [x] Generate PR title from diff/analysis
+- [x] Generate description: summary, changes, scope
+- [ ] Generate testing notes section (only present if the resolved PR template happens to include one)
+- [ ] Option to include AI findings in description (PR description is generated independently from the diff, not from the review findings)
+- [x] Format entire PR output as copyable text
+- [ ] Copy to clipboard button (one-click) — instead opens a prefilled GitHub "Create PR" page directly (exceeds MVP scope, which explicitly excluded GitHub API integration)
 - [ ] Show success notification after copy
-- [ ] Display generated PR in editor/modal
+- [x] Display generated PR in editor/modal (editable title/description fields on the page)
 
 **Deliverable:** Generate and copy PR descriptions
 
@@ -267,13 +267,13 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Display quantitative metrics
 
-- [ ] Files changed counter
-- [ ] Lines added/removed counter
+- [x] Files changed counter
+- [x] Lines added/removed counter
 - [ ] Breakdown by file type
-- [ ] Commit count calculator
-- [ ] Code risk assessment (high/medium/low)
+- [x] Commit count calculator
+- [ ] Code risk assessment (high/medium/low) — overall score is 0-100, not a high/medium/low label
 - [ ] Optional: visual chart of changes by category
-- [ ] Display all stats on summary page
+- [ ] Display all stats on summary page (stats are spread across the branch-compare and review screens, no dedicated summary page)
 
 **Deliverable:** See repo metrics at a glance
 
@@ -283,15 +283,15 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 **Goal:** Ship stable MVP
 
-- [ ] Test on 5+ real repositories
-- [ ] Fix edge cases (binary files, huge diffs, weird git states)
-- [ ] Test all error paths (bad API key, network down, etc.)
-- [ ] Verify no crashes on typical usage
-- [ ] UI polish (spacing, alignment, colors)
-- [ ] Error messages are helpful and clear
-- [ ] Loading states visible throughout
-- [ ] Settings persist across app restarts
-- [ ] Performance acceptable (<5 seconds per operation)
+- [ ] Test on 5+ real repositories (manual — not verifiable from code)
+- [ ] Fix edge cases (binary files, huge diffs, weird git states) — binary files handled; large-diff "show more" and other weird-state handling not confirmed
+- [ ] Test all error paths (bad API key, network down, etc.) (manual)
+- [ ] Verify no crashes on typical usage (manual)
+- [x] UI polish (spacing, alignment, colors)
+- [x] Error messages are helpful and clear
+- [x] Loading states visible throughout
+- [x] Settings persist across app restarts
+- [ ] Performance acceptable (<5 seconds per operation) (manual — not verifiable from code)
 
 **Deliverable:** Shipping MVP
 
@@ -448,15 +448,15 @@ Use simple JSON file stored in user's home directory. No database required for M
 
 Before shipping:
 
-- [ ] Tested on 5+ real repositories
-- [ ] Tested on Windows, Mac (and Linux if targeting)
-- [ ] API key handling is secure (never logged)
-- [ ] Settings page fully functional
-- [ ] All error cases show friendly messages
-- [ ] No console errors or warnings
-- [ ] Build size reasonable (<150MB)
-- [ ] README with setup instructions
-- [ ] Installer/packaging for distribution
+- [ ] Tested on 5+ real repositories (manual — not verifiable from code)
+- [ ] Tested on Windows, Mac (and Linux if targeting) (manual)
+- [x] API key handling is secure (never logged, masked input with show/hide toggle)
+- [x] Settings page fully functional
+- [x] All error cases show friendly messages
+- [ ] No console errors or warnings (manual — not verifiable at rest)
+- [ ] Build size reasonable (<150MB) (manual — not verifiable at rest)
+- [x] README with setup instructions
+- [ ] Installer/packaging for distribution (not confirmed)
 
 ---
 
