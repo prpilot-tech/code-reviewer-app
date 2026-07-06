@@ -1,13 +1,5 @@
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Field,
   FieldDescription,
   FieldError,
@@ -21,7 +13,18 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from "@/components/ui/sidebar";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   PR_TEMPLATE_TYPES,
@@ -30,17 +33,29 @@ import {
 } from "@/lib/pr-templates";
 import { getStoreValue, setStoreValue } from "@/lib/store";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, FileText, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import toast from "react-hot-toast";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { z } from "zod";
+
+const SETTINGS_SECTIONS = [
+  { key: "ai-api", label: "AI API", icon: Sparkles },
+  { key: "pr-templates", label: "PR Templates", icon: FileText },
+] as const;
+
+type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["key"];
 
 const STORE_KEY = "aiApiConfig";
 
 const PR_TEMPLATE_DEFAULTS: PrTemplateSettings = Object.fromEntries(
   PR_TEMPLATE_TYPES.map((type) => [type.key, ""]),
 );
+
+const MARKDOWN_PREVIEW_CLASSNAME =
+  "min-h-72 flex-1 overflow-y-auto rounded-md border border-input px-3 py-2 text-sm [&>*:first-child]:mt-0 [&_h1]:mt-4 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:mt-2 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline";
 
 const formSchema = z.object({
   apiUrl: z.url({
@@ -71,6 +86,7 @@ const DEFAULT_VALUES: FormValues = {
 };
 
 function SettingsScreen() {
+  const [section, setSection] = useState<SettingsSection>("ai-api");
   const [showApiKey, setShowApiKey] = useState(false);
 
   const {
@@ -102,6 +118,7 @@ function SettingsScreen() {
     register: registerTemplate,
     handleSubmit: handleTemplatesSubmit,
     reset: resetTemplates,
+    watch: watchTemplates,
     formState: { isSubmitting: isSubmittingTemplates },
   } = useForm<PrTemplateSettings>({
     defaultValues: PR_TEMPLATE_DEFAULTS,
@@ -118,26 +135,46 @@ function SettingsScreen() {
     toast.success("PR templates saved");
   };
 
-  return (
-    <div className="flex items-center justify-center">
-      <div className="w-full max-w-lg space-y-6 px-4">
-        <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-medium">Settings</h1>
-          <p className="text-muted-foreground text-sm">
-            Configure the AI provider used to generate code reviews.
-          </p>
-        </div>
+  const templateValues = watchTemplates();
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <Card>
-            <CardHeader>
-              <CardTitle>AI API</CardTitle>
-              <CardDescription>
-                Connect an LLM provider to power AI code review.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FieldGroup>
+  return (
+    <SidebarProvider className="min-h-0 flex-1 items-stretch overflow-hidden">
+      <Sidebar collapsible="none" className="w-56 shrink-0 bg-transparent">
+        <SidebarHeader>
+          <h1 className="px-2 text-lg font-medium">Settings</h1>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarMenu className="gap-1">
+              {SETTINGS_SECTIONS.map(({ key, label, icon: Icon }) => (
+                <SidebarMenuItem key={key}>
+                  <SidebarMenuButton
+                    isActive={section === key}
+                    onClick={() => setSection(key)}
+                    className="data-active:bg-primary data-active:font-medium data-active:text-primary-foreground data-active:hover:bg-primary/80"
+                  >
+                    <Icon />
+                    {label}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+
+      <div className="min-h-0 flex-1 overflow-y-auto border-l border-foreground/10">
+        <div className="px-8 py-6">
+          {section === "ai-api" && (
+            <form onSubmit={handleSubmit(onSubmit)} className="max-w-2xl">
+              <div className="space-y-1">
+                <h2 className="text-lg font-medium">AI API</h2>
+                <p className="text-muted-foreground text-sm">
+                  Connect an LLM provider to power AI code review.
+                </p>
+              </div>
+
+              <FieldGroup className="mt-6">
                 <Field data-invalid={!!errors.apiUrl}>
                   <FieldLabel htmlFor="apiUrl">API URL</FieldLabel>
                   <Input
@@ -264,53 +301,83 @@ function SettingsScreen() {
                   )}
                 </Field>
               </FieldGroup>
-            </CardContent>
-            <CardFooter className="justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                Save
-              </Button>
-            </CardFooter>
-          </Card>
-        </form>
 
-        <form onSubmit={handleTemplatesSubmit(onSubmitTemplates)}>
-          <Card>
-            <CardHeader>
-              <CardTitle>PR Templates</CardTitle>
-              <CardDescription>
-                Fallback templates used to generate the PR description when
-                the repo doesn&apos;t have its own (checked in{" "}
-                <span className="font-mono">.github/</span> or{" "}
-                <span className="font-mono">.gitlab/</span>). The AI picks
-                whichever type best matches the change.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FieldGroup>
-                {PR_TEMPLATE_TYPES.map((type) => (
-                  <Field key={type.key}>
-                    <FieldLabel htmlFor={`pr-template-${type.key}`}>
+              <div className="mt-6 flex justify-end">
+                <Button type="submit" disabled={isSubmitting}>
+                  Save
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {section === "pr-templates" && (
+            <form
+              onSubmit={handleTemplatesSubmit(onSubmitTemplates)}
+              className="max-w-4xl"
+            >
+              <div className="space-y-1">
+                <h2 className="text-lg font-medium">PR Templates</h2>
+                <p className="text-muted-foreground text-sm">
+                  Fallback templates used to generate the PR description when
+                  the repo doesn&apos;t have its own (checked in{" "}
+                  <span className="font-mono">.github/</span> or{" "}
+                  <span className="font-mono">.gitlab/</span>). The AI picks
+                  whichever type best matches the change.
+                </p>
+              </div>
+
+              <Tabs
+                defaultValue={PR_TEMPLATE_TYPES[0].key}
+                className="mt-6"
+              >
+                <TabsList>
+                  {PR_TEMPLATE_TYPES.map((type) => (
+                    <TabsTrigger key={type.key} value={type.key}>
                       {type.label}
-                    </FieldLabel>
-                    <Textarea
-                      id={`pr-template-${type.key}`}
-                      className="min-h-24 font-mono text-sm"
-                      placeholder={`Paste your ${type.label.toLowerCase()} PR template here…`}
-                      {...registerTemplate(type.key)}
-                    />
-                  </Field>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {PR_TEMPLATE_TYPES.map((type) => (
+                  <TabsContent
+                    key={type.key}
+                    value={type.key}
+                    className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+                  >
+                    <Field>
+                      <FieldLabel htmlFor={`pr-template-${type.key}`}>
+                        Template
+                      </FieldLabel>
+                      <Textarea
+                        id={`pr-template-${type.key}`}
+                        className="min-h-72 font-mono text-sm"
+                        placeholder={`Paste your ${type.label.toLowerCase()} PR template here…`}
+                        {...registerTemplate(type.key)}
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel>Preview</FieldLabel>
+                      <div className={MARKDOWN_PREVIEW_CLASSNAME}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {templateValues[type.key] ||
+                            "*Nothing to preview yet.*"}
+                        </ReactMarkdown>
+                      </div>
+                    </Field>
+                  </TabsContent>
                 ))}
-              </FieldGroup>
-            </CardContent>
-            <CardFooter className="justify-end">
-              <Button type="submit" disabled={isSubmittingTemplates}>
-                Save
-              </Button>
-            </CardFooter>
-          </Card>
-        </form>
+              </Tabs>
+
+              <div className="mt-6 flex justify-end">
+                <Button type="submit" disabled={isSubmittingTemplates}>
+                  Save
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
 
