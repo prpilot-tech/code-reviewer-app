@@ -1,4 +1,8 @@
-import { findPrTemplates, type BranchDiffDetail, type DiffHunk } from "@/lib/git";
+import {
+  findPrTemplates,
+  type BranchDiffDetail,
+  type DiffHunk,
+} from "@/lib/git";
 import {
   PR_TEMPLATE_TYPES,
   PR_TEMPLATES_STORE_KEY,
@@ -118,7 +122,7 @@ Review standards:
 - Prefer flagging borderline issues as "suggestion" or "info" rather than omitting them — this review should surface more, not fewer, findings than a casual pass. Only skip a finding if it is truly trivial and has no bearing on correctness, security, maintainability, or performance.
 - Score conservatively: reserve scores above 90 for changes with no notable issues. Deduct meaningfully for each unresolved concern, even minor ones. A diff with several warnings or a missing test should not score above 70.
 
-Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
+Respond with a single, strictly valid JSON object only: no prose outside the JSON, no markdown code fences, and no triple-quoted (""") strings — every string value must be a normal JSON string with newlines escaped as \\n. Match exactly this shape:
 {
   "summary": string,
   "metrics": {
@@ -213,6 +217,20 @@ interface ChatCompletionResult {
 }
 
 /**
+ * Some models emulate Python triple-quoted strings for multi-line JSON
+ * string values (`"key": """...multiline...""" `) instead of a single
+ * escaped string, which JSON.parse rejects outright. Rewrite those into
+ * properly escaped JSON strings so the rest of the payload still parses.
+ */
+function repairTripleQuotedStrings(text: string): string {
+  return text.replace(
+    /"([^"\n]+)":\s*"""([\s\S]*?)"""/g,
+    (_match, key: string, value: string) =>
+      `"${key}": ${JSON.stringify(value.trim())}`,
+  );
+}
+
+/**
  * Some models ignore "JSON only" instructions and wrap their answer in a
  * markdown code fence (or add stray prose around it). Strip that wrapping
  * so well-formed JSON inside still parses.
@@ -220,15 +238,16 @@ interface ChatCompletionResult {
 function extractJsonPayload(content: string): string {
   const trimmed = content.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenced) return fenced[1];
+  const candidate = fenced ? fenced[1] : trimmed;
 
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start !== -1 && end !== -1 && end > start) {
-    return trimmed.slice(start, end + 1);
-  }
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  const jsonSlice =
+    start !== -1 && end !== -1 && end > start
+      ? candidate.slice(start, end + 1)
+      : candidate;
 
-  return trimmed;
+  return repairTripleQuotedStrings(jsonSlice);
 }
 
 /**
@@ -376,7 +395,7 @@ function buildPrSystemPrompt(templates: PrTemplateOption[]): string {
   if (templates.length === 0) {
     return `${base}
 
-Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
+Respond with a single, strictly valid JSON object only: no prose outside the JSON, no markdown code fences, and no triple-quoted (""") strings — every string value must be a normal JSON string with newlines escaped as \\n. Match exactly this shape:
 {
   "title": string (a short, imperative summary of the change, under 72 characters, no trailing period),
   "description": string (a concise markdown summary of what changed and why, based only on the diff; use short paragraphs and/or a bullet list)
@@ -399,7 +418,7 @@ ${templateBlocks}
 
 ${pickInstruction} Keep the template's section headers, structure, and any checkboxes intact; replace placeholder/instructional text with real content based on the diff, and check off checkboxes where the diff supports it. Do not invent new sections and do not include the unused templates in your answer.
 
-Respond with a single JSON object only, no prose outside the JSON, matching exactly this shape:
+Respond with a single, strictly valid JSON object only: no prose outside the JSON, no markdown code fences, and no triple-quoted (""") strings — every string value must be a normal JSON string with newlines escaped as \\n. Match exactly this shape:
 {
   "title": string (a short, imperative summary of the change, under 72 characters, no trailing period),
   "description": string (the filled-in template as markdown, based only on the diff),
@@ -435,6 +454,7 @@ export async function generatePrMetadata(
     systemPrompt,
     userContent,
   );
+  console.log("content :", content);
 
   let parsedJson: unknown;
   try {
